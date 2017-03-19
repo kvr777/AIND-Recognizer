@@ -77,10 +77,18 @@ class SelectorBIC(ModelSelector):
 
         # TODO implement model selection based on BIC scores
         # warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+        #Declare some initial value for variables
         BIC = float('Inf')
         best_model = None
         fitted_model = None
+
+        # Iterate through each model within the defined range of states and calculate BIC score.
+        # The main "difficult" here is to calculate properly number of parameters of HMM (p variable).
+        # I use the formulas for full covariance matrices
+
         for Nb_states in range(self.min_n_components, self.max_n_components +1):
+            # Try to calculate BIC, if fails, the BIC for this state is -inf
             try:
                 fitted_model = GaussianHMM(n_components=Nb_states, covariance_type="diag", n_iter=1000,
                                        random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
@@ -89,13 +97,16 @@ class SelectorBIC(ModelSelector):
                 N = len(self.X)
                 NDimensions = self.X.shape[1]
 
-                p = (Nb_states-1) + (Nb_states * NDimensions ) + Nb_states * NDimensions * (NDimensions+1)/2. #for full covariance matrices
+                p = (Nb_states-1) + (Nb_states * NDimensions ) + Nb_states * NDimensions * (NDimensions+1)/2.
 
                 BIC_temp = -2 * LogL + p * np.log(N)
 
             except:
                 BIC_temp = float('Inf')
 
+            # To avoid usage of dictionary with stored BIC parameters, we check after each iteration the current
+            # value of selector and if it is better we found before, we assign it to the variable and store best model,
+            # we found so far .
             if BIC_temp<BIC:
                 BIC=BIC_temp
                 best_model= fitted_model
@@ -119,10 +130,18 @@ class SelectorDIC(ModelSelector):
         # TODO implement model selection based on DIC scores
         # warnings.filterwarnings("ignore", category=RuntimeWarning)
 
+        # Declare some initial values for variables
         DIC = -float('Inf')
         DIC_Temp = -float('Inf')
         best_model = None
         fitted_model = None
+
+        # Iterate through each model within the defined range of states and calculate DIC score.
+        # The first part of calculation is similar to BIC algorithm
+        # However to calculate second part of this selector, we need additionaly iterate to find probability
+        # of not occuring concrete word (so cumulative probability of all other words excluding this word)
+
+
         for Nb_states in range(self.min_n_components, self.max_n_components +1):
             M = 1.
             temp_model = None
@@ -147,9 +166,16 @@ class SelectorDIC(ModelSelector):
                         SumLogOtherWord =0
                     TotalSumLog += SumLogOtherWord
 
+            #Here we need take into consideration that according to formula, if in second part of algoritm
+            # is no probability other words, to avoid divide zero situation (when M=1), need to check this situation
+            # and make DIC equals to log(P(X(i))
             if M==1:
                 M= floaT('inf')
             DIC_temp = DIC_first_Log - (1/(M-1))*TotalSumLog*1.
+
+            # To avoid usage of dictionary with stored DIC parameters, we check after each iteration the current
+            # value of selector and if it is better we found before, we assign it to the variable and store best model,
+            # we found so far .
 
             if DIC_temp>DIC:
                 DIC=DIC_temp
@@ -168,13 +194,25 @@ class SelectorCV(ModelSelector):
 
         # TODO implement model selection using CV
         # warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+        #If we dont have at least two samples, it is impossible to use this method
         if len(self.lengths) < 2:
             return print("Number of samples is less than minimal number of kfolds")
 
+        # Try to remain default number of folds (3), but if only two samples, use two folds
         split_method = KFold(n_splits = min(len(self.lengths),3))
+
+        # Declare some initial values for variables
         BestAvgLL = -float('Inf')
         best_model = None
         temp_model = None
+
+        # Iterate through each model within the defined range of states and calculate average LogL.
+        # To do it, we split dataset  using K-fold splitting method and get training and testing sets.
+        # Then we try to train model on training set and calculate LogL on testing dataset.
+        # Because we have several combinations of train/test dataset, we calculate LogL for each combo and find
+        #average LogL for each state.
+
         for Nb_states in range(self.min_n_components, self.max_n_components + 1):
             TotalLL = 0
             CountLL = 1
@@ -205,6 +243,9 @@ class SelectorCV(ModelSelector):
 
             AvgTempLL = TotalLL/(CountLL*1.0)
 
+            # To avoid usage of dictionary with stored AvgLogL parameters for each state,
+            # we check after each iteration the current value of selector and if it is better we found before,
+            # we assign it to the variable and store best model, we found so far .
             if AvgTempLL>BestAvgLL:
                 BestAvgLL = AvgTempLL
                 best_model = fitted_model
